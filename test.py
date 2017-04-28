@@ -3,6 +3,14 @@ from PIL import Image
 import sys
 
 
+class NewImage:
+    def __init__(self, width, height):
+        self.width = width
+        self.height = height
+        self.image = Image.new('RGB', (width, height))
+
+
+
 def encode(image_name, input_name, output_name, n):
     """
     Засовывает в картинку image_name файл по битам из input_name
@@ -14,22 +22,20 @@ def encode(image_name, input_name, output_name, n):
     height = image.height
     byte_file = get_bytes_from_file(input_name)
     bin_msg = bytes_to_bits(byte_file)
-    pos = 0
     msg_len = len(bin_msg)
+    pos = 0
     if msg_len <= n*3*width*height-5:
         new_image = Image.new('RGB', (width, height))
         # поставим в пиксель (0,0) информацию, что есть сообщение
-        r, g, b = image.getpixel((0, 0))
         # пусть будем распознавать есть ли инфа по "111" в последних трех битах
-        r = edit_last_n(r, [1, 1, 1], 3)
-        g = edit_last_n(g, [1, 1, 1], 3)
-        b = edit_last_n(b, [1, 1, 1], 3)
-        new_image.putpixel((0, 0), (r, g, b))
-        # Отводим 4 пикселя:(1 - 5, 0) на служебную инфу, т.е. в каком пикселе будет заканчиваться текст
-        # В первом - сколько раз взять по 255
-        # Во втором - сколько прибавить после этих взятий по 255
-        # Так два раза, чтоб когда будем расшифровывать - узнать до какого надо расшифровывать
-        service_i = service_j = 0
+        rgb = []
+        for color in image.getpixel((0, 0)):
+            rgb.append(edit_last_n(color, [1, 1, 1], 3))
+        new_image.putpixel((0, 0), (rgb[0], rgb[1], rgb[2]))
+        # Отводим 4 пикселя(1 - 5, 0) на инфу о длине сообщения
+        # Кодируем в них эту инфу
+        # Максимальная длина - 4244831999, но это не играет роли
+        new_image = add_length_info(image, new_image, msg_len)
         for i in range(width):
             for j in range(height):
                 if i < 5 and j == 0:
@@ -44,10 +50,7 @@ def encode(image_name, input_name, output_name, n):
                     g = edit_last_n(g, bin_msg_array[n:2*n], n)
                     b = edit_last_n(b, bin_msg_array[2*n:3*n], n)
                     pos += 3*n
-                    service_i = i
-                    service_j = j
                 new_image.putpixel((i, j), (r, g, b))
-        new_image = add_info(image, new_image, service_i, service_j)
         new_image.save(output_name)
         new_image.close()
     else:
@@ -55,19 +58,20 @@ def encode(image_name, input_name, output_name, n):
     image.close()
 
 
-def add_info(old_image, new_image, i, j):
-    temp = ["{0:08b}".format(i // 255),
-            "{0:08b}".format(i - ((i // 255) * 255)),
-            "{0:08b}".format(j // 255),
-            "{0:08b}".format(j - ((j // 255) * 255))]
+def add_length_info(old_image, new_image, length):
+    a = length // 255 // 255 // 255
+    b = (length - a*255*255*255) // 255 // 255
+    c = (length - a*255*255*255 - b*255*255) // 255
+    d = length - a*255*255*255 - b*255*255 - c*255
+    temp = [a, b, c, d]
     for pos in range(1, 5):
         pixels = old_image.getpixel((pos, 0))
-        modified_pixels = edit_c(pixels, temp[pos-1])
+        modified_pixels = edit_color(pixels, "{0:08b}".format(temp[pos-1]))
         new_image.putpixel((pos, 0), modified_pixels)
     return new_image
 
 
-def edit_c(pixel, info):
+def edit_color(pixel, info):
     r, g, b = pixel
     r = edit_last_n(r, info[:2], 2)
     g = edit_last_n(g, info[2:5], 3)
@@ -123,7 +127,7 @@ def get_last_n_bits_from_color(color, n):
     return bits[-n:]
 
 
-def get_stop_pixels(image):
+def get_length_from_image(image):
     res = []
     for pos in range(1, 5):
         temp = ''
@@ -132,7 +136,7 @@ def get_stop_pixels(image):
         temp += get_last_n_bits_from_color(g, 3)
         temp += get_last_n_bits_from_color(b, 3)
         res.append(int(temp, 2))
-    return res[0]*255 + res[1], res[2]*255 + res[3]
+    return res[0]*255**3 + res[1]*255**2 + res[2]*255+res[3]
 
 
 def decode_bmp(image_name, n):
@@ -140,22 +144,25 @@ def decode_bmp(image_name, n):
     width = image.width
     height = image.height
     res = ""
-    stop_i, stop_j = get_stop_pixels(image)
+    msg_len = get_length_from_image(image)
+    print(msg_len)
+    #stop_i, stop_j = get_stop_pixels(image)
     for color in image.getpixel((0, 0)):
         temp = get_last_n_bits_from_color(color, 3)
         if temp != "111":
             print("Скорее всего в изображении нет нашего сообщения")
     stop = False
     for i in range(width):
-        if stop:
+        if len(res) >= msg_len:
             break
         for j in range(height):
-            if i == stop_i and j == stop_j + 1:
-                stop = True
+            if len(res) >= msg_len:
                 break
             if i >= 5 or j != 0:
                 for color in image.getpixel((i, j)):
                     # Добавляем последние n бит из цветов картинки в результат
+                    if len(res) >= msg_len:
+                        break
                     res += get_last_n_bits_from_color(color, n)
     image.close()
     result = bits_to_bytes(res)
