@@ -3,14 +3,6 @@ from PIL import Image
 import sys
 
 
-class NewImage:
-    def __init__(self, width, height):
-        self.width = width
-        self.height = height
-        self.image = Image.new('RGB', (width, height))
-
-
-
 def encode(image_name, input_name, output_name, n):
     """
     Засовывает в картинку image_name файл по битам из input_name
@@ -40,11 +32,11 @@ def encode(image_name, input_name, output_name, n):
             for j in range(height):
                 if i < 5 and j == 0:
                     continue
-                r, g, b = image.getpixel((i, j))
                 try:
                     bin_msg_array = bin_msg[pos:pos+n*3]
                 except IndexError:
                     bin_msg_array = bin_msg[pos:]
+                r, g, b = image.getpixel((i, j))
                 if pos < len(bin_msg):
                     r = edit_last_n(r, bin_msg_array[0:n], n)
                     g = edit_last_n(g, bin_msg_array[n:2*n], n)
@@ -146,12 +138,11 @@ def decode_bmp(image_name, n):
     res = ""
     msg_len = get_length_from_image(image)
     print(msg_len)
-    #stop_i, stop_j = get_stop_pixels(image)
+    wrong_bits_length = 0
     for color in image.getpixel((0, 0)):
         temp = get_last_n_bits_from_color(color, 3)
         if temp != "111":
             print("Скорее всего в изображении нет нашего сообщения")
-    stop = False
     for i in range(width):
         if len(res) >= msg_len:
             break
@@ -163,8 +154,13 @@ def decode_bmp(image_name, n):
                     # Добавляем последние n бит из цветов картинки в результат
                     if len(res) >= msg_len:
                         break
+                    if n > msg_len - len(res):
+                        wrong_bits_length = n - (msg_len - len(res))
+                        # Это если последний мы заменили не на полное n
                     res += get_last_n_bits_from_color(color, n)
     image.close()
+    if wrong_bits_length > 0:
+        res = res[:-wrong_bits_length]
     result = bits_to_bytes(res)
     f = open('output.txt', 'wb')
     for byte in result:
@@ -173,7 +169,7 @@ def decode_bmp(image_name, n):
 
 
 def main():
-    n = 3
+    n = 6
     encode("test.bmp", "message.txt", "output.bmp", n)
     decode_bmp("output.bmp", n)
 if __name__ == '__main__':
