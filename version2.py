@@ -59,7 +59,7 @@ class NewImage:
         self.image.putpixel((i, j), (r, g, b))
 
 
-def encode(image_name, message_name, output_name, n):
+def encrypt_in(image_name, message_name, output_name, n):
     """
     Кодирует в картинку image_name файл по битам из message_name
     Сохраняет в картинку под именем output_name
@@ -70,37 +70,46 @@ def encode(image_name, message_name, output_name, n):
     try:
         image = Image.open(image_name).convert('RGB')
     except FileNotFoundError:
-        #print("Отсутствует данный bmp фаил")
         return "Отсутствует данный bmp фаил"
-    width = image.width
-    height = image.height
     try:
         byte_file = get_bytes_from_file(message_name)
     except FileNotFoundError:
-       # print("Отсутствует фаил с сообщением")
         return "Отсутствует фаил с сообщением"
     bin_msg = bytes_to_bits(byte_file)
     msg_len = len(bin_msg)
-    if msg_len <= n*3*width*height-5:
-        pos = 0
-        next_im = NewImage(width, height, image)
-        next_im.add_marker()
-        next_im.add_length_info(msg_len)
-        for i in range(width):
-            for j in range(height):
-                if i < 5 and j == 0:
-                    continue
-                try:
-                    bin_msg_array = bin_msg[pos:pos+n*3]
-                except IndexError:
-                    bin_msg_array = bin_msg[pos:]
-                next_im.edit_pixel(bin_msg_array, i, j, n)
-                pos += 3*n
-        next_im.image.save(output_name)
-        next_im.image.close()
+    if msg_len <= (image.width * image.height - 5) * n * 3:
+        new_image = encode(image, bin_msg, output_name, n)
+        image.close()
+        new_image.image.save(output_name)
+        new_image.image.close()
     else:
-        print("Too large incoming file")
-    image.close()
+        print("LARGE")
+        return "Слишком длинный входящий фаил. " \
+               "Увеличьте количество кодируемых бит " \
+               "или уменьшите длину сообщения"
+
+
+def encode(image, bin_msg, output_name, n):
+    """
+    Кодирует в картинку image бинарное сообщение bin_msg
+    Сохраняет в картинку под именем output_name
+    n - сколько бит с конца заменять у каждого цвета в пиксиле
+    """
+    pos = 0
+    new_image = NewImage(image.width, image.height, image)
+    new_image.add_marker()
+    new_image.add_length_info(len(bin_msg))
+    for i in range(image.width):
+        for j in range(image.height):
+            if i < 5 and j == 0:
+                continue
+            try:
+                bin_msg_array = bin_msg[pos:pos+n*3]
+            except IndexError:
+                bin_msg_array = bin_msg[pos:]
+            new_image.edit_pixel(bin_msg_array, i, j, n)
+            pos += 3*n
+    return new_image
 
 
 def edit_last_n(color, msg, n):
@@ -166,7 +175,7 @@ def get_length_from_image(image):
     return res[0]*255**3 + res[1]*255**2 + res[2]*255+res[3]
 
 
-def decode_bmp(image_name, n):
+def decode_bmp(image_name, output_name, n):
     """Пытается декодировать изображение по последним n битам"""
     image = Image.open(image_name)
     width = image.width
@@ -195,7 +204,7 @@ def decode_bmp(image_name, n):
     if wrong_bits_length > 0:
         res = res[:-wrong_bits_length]
     result = bits_to_bytes(res)
-    f = open('output.txt', 'wb')
+    f = open(output_name, 'wb')
     for byte in result:
         f.write(byte)
     f.close()
@@ -206,9 +215,30 @@ def decode_bmp(image_name, n):
     return str_res
 
 
+def check_last_layer(image_name, layer_number):
+    image = Image.open(image_name).convert('RGB')
+    new_image = Image.new('RGB', (image.width, image.height))
+    for i in range(image.width):
+        for j in range(image.height):
+            rgb = []
+            for color in image.getpixel((i, j)):
+                rgb.append(get_last_n_bits(color, layer_number)[0])
+            for k in range(3):
+                if rgb[k] == "1":
+                    rgb[k] = 255
+                else:
+                    rgb[k] = 0
+            new_image.putpixel((i, j), (rgb[0], rgb[1], rgb[2]))
+    name = "Layer"+str(layer_number)+".bmp"
+    new_image.save(name)
+
+
 def main():
-    n = 8
-    encode("test.bmp", "message.txt", "output.bmp", n)
-    decode_bmp("output.bmp", n)
+    n = 4
+    # encrypt_in("test28.bmp", "test.bmp", "output1.bmp", n)
+    # decode_bmp("output1.bmp", "output2.bmp", n)
+    encrypt_in("test28.bmp", "message.txt", "output.bmp", n)
+    decode_bmp("output.bmp", "output.txt", n)
+    # check_last_layer("output.bmp", 1)
 if __name__ == '__main__':
     main()

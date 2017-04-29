@@ -14,17 +14,17 @@ class SteganographyTest(unittest.TestCase):
     def test_filename(self):
         for i in range(8):
             self.assertEqual("Отсутствует данный bmp фаил",
-                             solve.encode("WrongName.bmp", "message.txt", "output.txt", i))
+                             solve.encrypt_in("WrongName.bmp", "message.txt", "output.txt", i))
 
     def test_extension(self):
         for i in range(8):
             self.assertEqual("Расширение изображения должно быть .bmp",
-                             solve.encode("WrongName.jpg", "message.txt", "output.txt", i))
+                             solve.encrypt_in("WrongName.jpg", "message.txt", "output.txt", i))
 
     def test_msg_file(self):
         for i in range(8):
             self.assertEqual("Расширение изображения должно быть .bmp",
-                             solve.encode("WrongName.jpg", "message.txt", "output.txt", i))
+                             solve.encrypt_in("WrongName.jpg", "message.txt", "output.txt", i))
 
     def test_bytes_to_bits(self):
         bits = [int(i) for i in "01110100011001010111001101110100"]
@@ -53,7 +53,7 @@ class SteganographyTest(unittest.TestCase):
 
     @staticmethod
     def all_with_n(n):
-        solve.encode("test.bmp", "message.txt", "output.bmp", n)
+        solve.encrypt_in("test28.bmp", "message.txt", "output.bmp", n)
         solve.decode_bmp("output.bmp", n)
         input_file = solve.get_bytes_from_file("message.txt")
         output_file = solve.get_bytes_from_file("output.txt")
